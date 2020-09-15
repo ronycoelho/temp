@@ -1,0 +1,1504 @@
+---
+title: "Capacidades governamentais municipais e desenvolvimento humano no Brasil"
+output: 
+  html_document:
+    theme: readable
+    code_folding: hide
+    df_print: paged
+    toc_float: true
+    toc: true
+    toc_depth: 3
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = T,
+                      message = F, warning = F)
+```
+
+Status deste relatório: *working in progress*
+
+# Início
+
+**Metadados do artigo aceito para publicação na RSP, de autoria de Rony Coelho, Felipe Guth e Miguel Loureiro**
+  
+ - Neste relatório são disponibilizados os códigos e as bases de dados utilizados no artigo
+ 
+   - Para verificar os códigos, clique em `Code`
+    
+   - Os *chuncks* dos códigos estão comentados com informações antecedidas por `#`
+   
+   - Um versão deste relatorio em formato de *script* (arquivo .Rmd) pode ser encontrada no [github](https://github.com/ronycoelho) dos autores
+    
+   - Os dados podem acessados em suas fontes originais nos respectivos links fornecidos oportunamente
+   
+    
+***
+
+# 00. Configurações prévias
+  
+  - Carregar pacotes
+  
+  - Definir funções 
+  
+```{r pacotes}
+# limpar enviroment
+rm(list = ls())
+
+# Desabilitar notação científica
+#options(scipen = 999)
+
+# Instalar este pacote para quem não o tem
+#install.packages("pacman")
+
+pacman::p_load(tidyverse, readxl, janitor, sjPlot, 
+               scales, DataExplorer, DT, gridExtra,
+               viridis, ggcorrplot, VGAM, geobr, ggthemes)
+```
+
+## Função para carregar as Munics
+```{r funçao}
+# A funcao carrega dois objetos: 
+# 1 - O dicionário da Munic, contido na primeira aba do excel; 
+# 2 - Os dados das Munics contidos em todas as demais abas, unidos por "A1"
+
+carregar_munics <- function(link_da_munic, ano){
+  # definir diretório e arquivo temporário
+  wd_origin <- getwd()
+  temp_dir <- tempdir()
+  setwd(temp_dir)
+  file.remove(list.files(path = temp_dir))
+  temp_file <- tempfile(tmpdir = temp_dir)
+  # Criar lista para armazenar arquivos 
+  Munic_list <- list()
+  # Download da Munic
+  download.file(url = link_da_munic, destfile = temp_file)
+  # unizip
+  unzip(temp_file)
+  # remover temporário
+  file.remove(temp_file)
+  # selecionar o arquivo xls
+  file.xls <- list.files(pattern = "xls")
+  # Nome da Munic
+  Munic <- paste0("Munic_", ano)
+  # Carregar todas as abas do excel  
+  Munic <- file.xls %>% 
+  excel_sheets() %>% 
+  set_names() %>% 
+  map(read_excel, path = file.xls)
+  # remover arquivo xls da pasta temporaria
+  file.remove(file.xls)
+  # Nome do dicionario
+  dic <- paste0("dic_", ano)
+  # selecionar dicionário
+  dic <- Munic[[1]]
+  # excluir dicionário
+  Munic[[1]] <- NULL
+  # Mesclar todas as abas do excel
+  Munic <- Munic %>% 
+      reduce(full_join, by = "A1")
+  # Criar nome da lista 
+  list <- paste0("list_", Munic)
+  # criar lista com dicionário e Munic
+  list <- list(dic, Munic)
+  # retornar ao diretório orginal
+  setwd(wd_origin)
+  # retornar objeto list com dicionário e Munics
+  return(list)
+}
+```
+
+
+***
+
+# 01. Carregar dados
+ 
+##### [Munic 2014](ftp://ftp.ibge.gov.br/Perfil_Municipios/2014/base_MUNIC_xls_2014.zip)
+  * dados da saúde 
+  * educação
+  * total de servidores do município (com graduação e pós-graduação)
+ 
+##### [Munic 2013 - Bloco Suplementar](ftp://ftp.ibge.gov.br/Perfil_Municipios/Assistencia_Social_2013/xls/base_assist_social_2013.zip) 
+  * dados da assistencia social
+ 
+##### [Munic 2015](ftp://ftp.ibge.gov.br/Perfil_Municipios/2015/Base_de_Dados/Base_MUNIC_2015_xls.zip)
+  * dados dos consórcios nas três áreas (saúde, educ. e assist. social)
+  
+##### [Pib](ftp://ftp.ibge.gov.br/Pib_Municipios/2017/base/base_de_dados_2010_2017_xls.zip) 
+  * ano: 2014
+ 
+##### [IDH-M](http://atlasbrasil.org.br/2013/data/rawData/atlas2013_dadosbrutos_pt.xlsx)
+  * ano: 2010
+ 
+```{r bases, eval = F}
+########################################
+# Munic 2014
+Munic_14_link <- "ftp://ftp.ibge.gov.br/Perfil_Municipios/2014/base_MUNIC_xls_2014.zip"
+
+Munic_14 <- carregar_munics(link_da_munic = Munic_14_link,
+                            ano = 2014)
+
+Munic_dic_14 <- Munic_14[[1]]
+
+Munic_14 <- Munic_14[[2]]
+
+########################################
+# Munic 2013 - Suplementar
+Munic_13sup_link <- "ftp://ftp.ibge.gov.br/Perfil_Municipios/Assistencia_Social_2013/xls/base_assist_social_2013.zip"
+
+Munic_13 <- carregar_munics(link_da_munic = Munic_13sup_link,
+                            ano = 2013)
+
+Munic_dic_13 <- Munic_13[[1]]
+
+Munic_13 <- Munic_13[[2]]
+
+########################################
+# Munic 2015
+Munic_15_link <- "ftp://ftp.ibge.gov.br/Perfil_Municipios/2015/Base_de_Dados/Base_MUNIC_2015_xls.zip"
+
+Munic_15 <- carregar_munics(link_da_munic = Munic_15_link,
+                            ano = 2015)
+
+Munic_dic_15 <- Munic_15[[1]]
+
+Munic_15 <- Munic_15[[2]]
+
+########################################
+# Pib   
+pib_link <- "ftp://ftp.ibge.gov.br/Pib_Municipios/2017/base/base_de_dados_2010_2017_xls.zip"
+temp_dir <- tempdir()
+#
+temp_file2 <- tempfile(tmpdir = temp_dir)
+# download
+download.file(url = pib_link, destfile = temp_file2)
+#unzip
+unzip(temp_file2)
+# selecionar arquivo
+file.xls <- list.files(pattern = "xls")
+
+pib <- rio::import(file.xls)
+file.remove(file.xls)
+
+########################################    
+# Carregar dados do idh-m
+idhm_link <- "http://atlasbrasil.org.br/2013/data/rawData/atlas2013_dadosbrutos_pt.xlsx"
+
+idhm <- rio::import(idhm_link, sheet = 2)
+#idhm <- read_excel("idh_census.xlsx", sheet = 2)   
+
+########################################    
+# base de códigos IBGE
+#cod <- read_excel("codigos.xlsx") %>% 
+#      dplyr::select(1:2)
+```
+
+##### Not run
+```{r Not_run_1_b}
+# Uso particular para configurações no computador pessoal 
+#setwd("C:/r_files/my_academic_projects/capacidades/capacitties")
+#save.image("capacities_raw_data.RData")
+load("capacities_raw_data.RData")
+```
+
+## Selecionar dados
+```{r seleção}
+###########################################
+# Munic 2014 - saúde e educação
+index_14 <- c("A263", # Conselho de Saúde
+              "A271", # Fundo de Saúde
+              "A273", # Plano de Saúde
+              "A251", # Secretaria de Saúde
+              "A256", # Servidores da Saúde
+              "A207", # Conselho de Educação
+              "A224", # Conselho do Fundeb, proxy para o fundo
+              "A203", # Plano de Educação
+              "A157", # Secretaria de Educação
+              "A167", # Servidores da Educação
+              #"A392", # Secretaria Direitos Humanos
+              #"A545", # Fundo Direitos Humanos
+              #"A410", # Plano Direitos Humanos
+              #"A442",  # Conselho Direitos Humanos
+              "A2",   # Total de servidores do Municipio 
+              "A12", # Total com ensino Superior
+              "A13") # Total com pós-graduação
+
+Munic_14_sel <- Munic_14 %>% 
+  dplyr::select(A1, 
+                A1022:A1029, # região, população e porte
+                index_14)
+###########################################    
+#Munic 2013 - Assistência Social
+    index_13 <- c("A1", 
+                  "A199", # Conselho da Assit. Social
+                  "A230", # Fundo da Assist. Social
+                  "A149", # Plano da Assist. Social
+                  "A2", # Secretaria de Assist. Social
+                  "A39") # Servidores da Assist. Social
+    
+    Munic_13_sel <- Munic_13 %>% 
+      dplyr::select(index_13) 
+###########################################    
+# Munic 2015 - consórcios
+    index_15 <- c("A1", 
+                  "A151", # Consórcio de Educação
+                  "A152", # Intermunicipal
+                  "A153", # Estadual
+                  "A154", # Federal
+                  "A155", # Consórcio de Saúde
+                  "A156", # Intermunicipal
+                  "A157", # Estadual
+                  "A158", # Federal
+                  "A159", # Consórcio de Assist. Social
+                  "A160", # Intermunicipal
+                  "A161", # Estadual
+                  "A162") # Federal
+
+    Munic_15_sel <- Munic_15 %>% 
+      dplyr::select(index_15)
+
+###########################################        
+# PIB - 2014
+    pib <- clean_names(pib)
+    pib_sel <- pib %>% #glimpse()
+      filter(ano == 2014) %>% 
+      select(A1 = codigo_do_municipio, ano, 
+             pib_total = produto_interno_bruto_a_precos_correntes_r_1_000,
+             pib_per_cap = produto_interno_bruto_per_capita_a_precos_correntes_r_1_00)%>%
+      arrange(desc(pib_per_cap))
+    
+###########################################                
+# IDH-M - 2010
+    idhm_sel <- idhm %>% 
+      dplyr::select(A1 = Codmun7, ANO, IDHM) %>% 
+      filter(ANO==2010) %>% 
+      arrange(desc(IDHM))
+```
+
+
+## Mesclar bases
+```{r mesclar}
+# garantir que os códigos possuem a mesma classficação
+Munic_13_sel$A1 <- as.character(Munic_13_sel$A1)
+Munic_15_sel$A1 <- as.character(Munic_15_sel$A1)
+Munic_14_sel$A1 <- as.character(Munic_14_sel$A1)
+pib_sel$A1 <- as.character(pib_sel$A1)
+idhm_sel$A1 <- as.character(idhm_sel$A1)
+
+# Criar variavel com código de 6 digitos para mesclar com a Munic 2013 e mesclar todas as Munics
+capacities <- Munic_14_sel %>% 
+  mutate(A1a = str_sub(A1,start = 1, end = 6)) %>% 
+  select(A1, A1a, everything()) %>% 
+  full_join(Munic_13_sel, by = c("A1a"="A1")) %>% 
+  full_join(Munic_15_sel, by = c("A1"="A1"))
+
+# Mesclar pib e idhm
+capacities <- capacities %>% 
+  full_join(pib_sel) %>% 
+  full_join(idhm_sel)
+```
+
+## Visualização parcial do banco
+
+  - Apenas 10 primeiras linhas
+  - Nomes das variáveis originais
+```{r parcial_visu}
+capacities %>% head(10)
+```
+
+## Organizar e renomenar variáveis 
+```{r organizar_renomear}
+capacities <- capacities %>% 
+  select(cod_mun = A1,
+         nm_mun = A1027,
+         populacao = A1028,
+         faixa_pop = A1029,
+         cod_est = A1022,
+         nm_est = A1025,
+         sg_est = A1026,
+         regiao = A1024,
+         # Secretarias
+         sc_sa = A251,	
+         sc_as = A2.y,	
+         sc_ed = A157.x,
+         # Planos
+         pl_sa = A273,	
+         pl_as = A149,	
+         pl_ed = A203,	
+         # Fundos
+         fu_sa = A271,	
+         fu_as = A230,	
+         fu_ed = A224,	
+         # Conselhos
+         chl_sa = A263,	
+         chl_as = A199,	
+         chl_ed = A207,	
+         # Servidores
+         ser_sa = A256,	
+         ser_as = A39,	
+         ser_ed = A167,
+         # Consórciso
+         consor_ed = A151,
+         #consor_ed_mun = A152 ,
+         #consor_ed_est = A153,
+         #consor_ed_un =  A154,
+          consor_sa = A155,
+         #consor_sa_mun = A156,
+         #consor_sa_est = A157.y,
+         #consor_sa_un =  A158,
+          consor_as = A159,
+         #consor_as_mun = A160,
+         #consor_as_est = A161,
+         #consor_as_un =  A162,
+         pib_total = pib_total,
+         pib_per_cap = pib_per_cap, 
+         ano_pib = ano,
+         idhm = IDHM,
+         ano_idhm = ANO)
+```
+
+### Verificar e remover NAs
+
+ - NA - Not Available (dados não disponíveis)
+```{r verificar_na_1}
+# Verificar existência de NAs
+DataExplorer::plot_missing(capacities)
+```
+
+```{r verificar_na_2}
+# NA - presentes apenas nos IDHM
+# Excluir NA's
+# Removidos 5 municipios não criados até 2010, portante sem o IDHM para esse ano.
+capacities <- capacities %>% 
+  drop_na(idhm)
+
+DataExplorer::plot_missing(capacities)
+```
+
+## Nova base 1
+
+Criada apenas para preservar os dados brutos em caso de reutilização
+```{r nova_base_1}
+capacities_1 <- capacities
+```
+
+***
+
+# 02. Visualizar dados brutos
+  
+> Podem ser baixados em formato excel ou csv
+
+* Legenda:  
+
+  - cod_mun = código do município
+  - nm_mun = nome do município
+  - cod_est = código do estado 
+  - nm_est = nome do estado 
+  - sg_est = sigla do estado
+  - populacao = população do município
+  - faixa_pop = classificação da faixa populacional (IBGE)
+  - sc_ = secretaria exclusiva (sa = saúde; ed = educação; as = assistência social)
+  - pl_ = plano setorial (sa = saúde; ed = educação; as = assistência social)
+  - fu_ = fundo setorial (sa = saúde; ed = educação; as = assistência social)
+  - chl_ = conselho setorial (sa = saúde; ed = educação; as = assistência social)
+  - ser_ = servidores setoriais (sa = saúde; ed = educação; as = assistência social)
+  - consor_ = consórcios setoriais (sa = saúde; ed = educação; as = assistência social)
+  - pib_total = Pib total do município
+  - pib_per_cap = Pib per capta do município
+  - ano_pib = Ano de referência do Pib
+  - idhm = IDHM do município 
+  - ano_idhm = Ano de referência do IDHM
+  
+```{r visualizar_raw_data, fig.width = 20}
+capacities_1 %>%
+  datatable(extensions = 'Buttons',
+            rownames = F,
+            options = list(dom = 'Blfrtip',
+                           buttons = c('csv', 'excel'),
+                          autoFill = TRUE,
+                           fixedHeader = TRUE,
+                           autowidth = TRUE,
+                           paging = F,
+                           scrollX = TRUE,
+                           scrollY = "400px"))
+```
+
+*** 
+
+# 03. Manipulação
+
+##### Not run
+```{r Not_run_2}
+# Uso particular para configurações de uso pessoal
+#setwd("C:/r_files/my_academic_projects/capacidades/capacitties")
+#save.image("capacities_raw_data_2.RData")
+#load("capacities_raw_data_2.RData")
+```
+
+## Filtrar munincípios 
+  
+  - **Selecionar aqueles com menos de 50.000 habitantes** 
+
+> De 5.565 mun. passamos a trabalhar com 4.917 (88%)
+
+```{r}
+capacities_2 <- capacities_1 %>% 
+  filter(populacao <= 50000) %>% 
+  mutate(faixa_pop = faixa_pop %>% as.factor())
+```
+
+### Verificar aplicação
+
+  - Visualizar:
+  
+      - Categorias 
+
+      - Quantidades em cada categoria 
+
+      - Estatisticas descritivas básicas
+
+```{r}
+unique(capacities_2$faixa_pop)
+summary(capacities_2$faixa_pop)
+summary(capacities_2$populacao)
+```
+
+
+## Classificar variáveis
+```{r class_var}
+character_col <- c("cod_mun", "nm_mun")
+
+factor_col <- c("cod_est", "nm_est", "sg_est","faixa_pop", "regiao", "sc_sa", "sc_as", "sc_ed", "pl_sa", "pl_as", "pl_ed", "fu_sa", "fu_as", "fu_ed", "chl_sa", "chl_as", "chl_ed", "consor_ed", "consor_ed", "consor_sa", "consor_as") 
+
+numeric_col <- c("populacao", "ser_sa", "ser_as", "ser_ed", "pib_total", "pib_per_cap", "ano_pib", "idhm","ano_idhm")
+
+capacities_2 <- capacities_2 %>% 
+  mutate_at(character_col, as.character) %>% 
+  mutate_at(factor_col, as.factor) %>% 
+  mutate_at(numeric_col, as.numeric)
+```
+
+## Sumário das variáveis
+
+  - Numéricas: são apresentados valores mínimos, máximos, média, mediana etc.
+  
+  - Categóricas: categorias e quantidade de cada uma 
+  
+  - *Character*: quantidade de valores únicos
+  
+```{r fig.width = 20}
+summary(capacities_2)
+```
+
+### Filtrar casos com "recusa" 
+
+- 1 mun. (cod_mun: 2102150) recusou-se a responder todas as questões
+
+- 1 mun. (cod_mun: 2102150) recusou-se a responder questões sobre consórcios
+
+- Outros casos serão excluídos oportunamente
+
+```{r}
+# capacities_2[which(capacities_2$sc_as == "Recusa"), ]
+# capacities_2[which(capacities_2$sc_ed == "Recusa"), ]
+# capacities_2[which(capacities_2$consor_ed == "Recusa"), ]
+
+# # A tibble: 1 x 31
+#   cod_mun nm_mun populacao faixa_pop cod_est nm_est sg_est regiao sc_sa sc_as sc_ed pl_sa pl_as pl_ed
+#   <chr>   <chr>      <dbl> <fct>     <fct>   <fct>  <fct>  <fct>  <fct> <fct> <fct> <fct> <fct> <fct>
+# 1 2102150 Brejo~      4291 1 - Até ~ 21      Maran~ MA     2 - N~ Recu~ Recu~ Recu~ Recu~ Recu~ Recu~
+
+# Filtrar 1 municipio com recusa para todas as variáveis
+capacities_2 <- filter(capacities_2, cod_mun != 2102150) 
+capacities_2 <- filter(capacities_2, cod_mun != 4110508) 
+
+# 4.915 casos 
+```
+
+## *Dummies* 
+
+  - Transformar variáveis em *dummies*  
+  
+  Operação em dois passos
+  
+  - O primeiro aplicado somente às secretarias 
+  - O segundo a todas as variáveis com respostas "Sim"
+
+### Secretarias
+  
+  - Reconferir classficação da saúde, educação e assistência social, respectivamente
+```{r}
+# verificar labels
+unique(capacities_2$sc_sa)
+unique(capacities_2$sc_ed)
+unique(capacities_2$sc_as)
+```
+
+### 1º passo
+
+  - Transformar *Secretaria municipal exclusiva* = Sim
+    
+  - Outras modalidades = Não
+    
+```{r}
+# Transformar Secretaria exclusiva = Sim.
+capacities_2 <- capacities_2 %>%
+  mutate_at(vars(sc_sa:sc_ed), 
+            funs(ifelse(.=="Secretaria municipal exclusiva", "Sim","Não"))) 
+```
+
+### Verificar aplicação
+
+quantidades e porcentagens por setor
+```{r}
+capacities_2 %>% 
+  count(sc_sa, name = "quantidade") %>% 
+  mutate(perc = quantidade/sum(quantidade)*100)
+
+capacities_2 %>% 
+  count(sc_as, name = "quantidade") %>% 
+  mutate(perc = quantidade/sum(quantidade)*100)
+
+capacities_2 %>% 
+  count(sc_ed, name = "quantidade") %>%
+  mutate(perc = quantidade/sum(quantidade)*100)
+```
+
+
+### 2º passo 
+  - Transformar todas as respostas "Sim" = 1;
+  
+  - Todas demais opções ("Não", "Não informado", etc) = 0
+  
+  - Depois, realizar a contagem de "Sim" e classificar
+  
+### Secretarias
+
+- realizar contagem de "Sim" e categorizar
+
+Visualizar classificação da contagem, quantidade e porcentagem em cada categoria (apenas para saúde. O mesmo procedimento foi aplicado às demais áreas)
+```{r}
+# Criar dummies 1 = Sim; 0 = Não.
+capacities_2 <- capacities_2 %>% 
+  mutate_at(vars(sc_sa:sc_ed), funs(ifelse(.== "Sim", 1, 0))) 
+
+# Contar quantidade de "sim" e organizar colunas
+  capacities_2 <- capacities_2 %>% 
+    mutate(Num_sc = rowSums(select(.,sc_sa:sc_ed))) %>% 
+    relocate(Num_sc, .after = sc_ed)
+  
+# Categorizar quantidade de secretarias
+capacities_2 <- capacities_2 %>% 
+  mutate(Sc_class = case_when(
+    Num_sc == 3 ~ "Possui 3",
+    Num_sc == 2 ~ "Possui 2",
+    Num_sc == 1 ~ "Possui 1",
+    Num_sc == 0 ~ "Não possui")) %>% 
+    relocate(Sc_class, .after = Num_sc)
+
+levels_cat <- c("Não possui" ,"Possui 1", "Possui 2","Possui 3")
+
+capacities_2$Sc_class <- ordered(capacities_2$Sc_class, 
+               levels = c(levels_cat))
+
+# Verificar 
+capacities_2 %>% 
+  count(Sc_class, name = "quantidade") %>% 
+  mutate(perc = quantidade/sum(quantidade)*100)
+```
+
+
+### Planos
+
+- realizar contagem de "Sim" e categorizar
+```{r}
+# # Verificar lables
+# unique(capacities_1$pl_as)
+# unique(capacities_1$pl_sa)
+# unique(capacities_1$pl_ed)
+
+# Criar dummies 1 = Sim; 0 = Não.
+capacities_2 <- capacities_2 %>%
+  mutate_at(vars(pl_sa:pl_ed), funs(ifelse(.== "Sim", 1, 0))) 
+
+# Contar quantidade de "sim" e organizar colunas
+capacities_2 <- capacities_2 %>% 
+  mutate(Num_pl = rowSums(select(.,pl_sa:pl_ed)))%>% 
+  relocate(Num_pl, .after = pl_ed)
+
+# Categorizar quantidade de planos planos
+capacities_2 <- capacities_2 %>%
+  mutate(Pl_class = case_when(
+    Num_pl == 3 ~ "Possui 3",
+    Num_pl == 2 ~ "Possui 2",
+    Num_pl == 1 ~ "Possui 1",
+    Num_pl == 0 ~ "Não possui")) %>% 
+    relocate(Pl_class, .after = Num_pl)
+
+capacities_2$Pl_class <- ordered(capacities_2$Pl_class, 
+               levels = c(levels_cat))
+
+capacities_2 %>% 
+  count(Pl_class, name = "quantidade") %>% 
+  mutate(perc = quantidade/sum(quantidade)*100)
+```
+
+### Fundos
+
+- realizar contagem de "Sim" e categorizar
+```{r}
+# # Verificar lables
+# unique(capacities_1$fu_as)
+# unique(capacities_1$fu_sa)
+# unique(capacities_1$fu_ed)
+
+# Criar dummies 1 = Sim; 0 = Não.
+capacities_2 <- capacities_2 %>% 
+  mutate_at(vars(fu_sa:fu_ed), funs(ifelse(.== "Sim", 1, 0))) 
+
+  # Contar quantidade de "sim" e organizar colunas
+  capacities_2 <- capacities_2 %>% 
+    mutate(Num_fu = rowSums(select(.,fu_sa:fu_ed)))%>% 
+    relocate(Num_fu, .after = fu_ed) 
+  
+# Categorizar quantidade de fundos
+capacities_2 <- capacities_2 %>% 
+  mutate(Fu_class = case_when(
+    Num_fu == 3 ~ "Possui 3",
+    Num_fu == 2 ~ "Possui 2",
+    Num_fu == 1 ~ "Possui 1",
+    Num_fu == 0 ~ "Não possui")) %>% 
+    relocate(Fu_class, .after = Num_fu)
+
+capacities_2$Fu_class <- ordered(capacities_2$Fu_class, 
+               levels = c(levels_cat))
+
+capacities_2 %>% 
+  count(Fu_class, name = "quantidade") %>% 
+  mutate(perc = quantidade/sum(quantidade)*100)
+```
+
+### Conselhos
+
+- realizar contagem de "Sim" e categorizar
+```{r}
+# # Verificar lables
+# unique(capacities_1$chl_as)
+# unique(capacities_1$chl_sa)
+# unique(capacities_1$chl_ed)
+
+
+# Criar dummies 1 = Sim; 0 = Não.
+capacities_2 <- capacities_2 %>% 
+  mutate_at(vars(chl_sa:chl_ed), funs(ifelse(.== "Sim", 1, 0))) 
+
+# Contar quantidade de "sim" e organizar colunas
+capacities_2 <- capacities_2 %>% 
+  mutate(Num_chl = rowSums(select(.,chl_sa:chl_ed)))%>% 
+  relocate(Num_chl, .after = chl_ed)
+
+# Categorizar quantidade de planos planos
+capacities_2 <- capacities_2 %>% 
+  mutate(Chl_class = case_when(
+    Num_chl == 3 ~ "Possui 3",
+    Num_chl == 2 ~ "Possui 2",
+    Num_chl == 1 ~ "Possui 1",
+    Num_chl == 0 ~ "Não possui")) %>% 
+    relocate(Chl_class, .after = Num_chl)
+
+capacities_2$Chl_class <- ordered(capacities_2$Chl_class, 
+               levels = c(levels_cat))
+
+capacities_2 %>% 
+  count(Chl_class, name = "quantidade") %>% 
+  mutate(perc = quantidade/sum(quantidade)*100)
+```
+
+### Consórcios
+
+- realizar contagem de "Sim" e categorizar
+```{r}
+# # Assistência Social
+# levels(capacities_2$consor_as)
+# levels(capacities_2$consor_ed)
+# levels(capacities_2$consor_sa)
+
+capacities_2 <- capacities_2 %>% 
+  mutate_at(vars(consor_ed:consor_as), 
+            funs(ifelse(.== "Sim", 1, 0)))
+
+# Contar quantidade de "sim" e organizar colunas
+capacities_2 <- capacities_2 %>% 
+  mutate(Num_consor = rowSums(select(.,consor_ed:consor_as)))%>% 
+  relocate(Num_consor, .after = consor_as)
+
+# Categorizar quantidade de planos planos
+capacities_2 <- capacities_2 %>% 
+  mutate(Consor_class = case_when(
+    Num_consor == 3 ~ "Possui 3",
+    Num_consor == 2 ~ "Possui 2",
+    Num_consor == 1 ~ "Possui 1",
+    Num_consor == 0 ~ "Não possui")) %>% 
+    relocate(Consor_class, .after = Num_consor)
+
+capacities_2$Consor_class <- ordered(capacities_2$Consor_class,
+               levels = c(levels_cat))
+
+capacities_2 %>% 
+  count(Consor_class, name = "quantidade") %>% 
+  mutate(perc = quantidade/sum(quantidade)*100)
+```
+
+### Servidores
+
+- calcular proporção de servidores por 10.000 habitantes
+```{r}
+capacities_2 <- capacities_2 %>%
+  mutate(ser_sa_pop = ser_sa*10000/populacao,
+              ser_ed_pop = ser_ed*10000/populacao,
+              ser_as_pop = ser_as*10000/populacao,
+              total_ser_por_10mil_hab = ser_sa_pop + ser_ed_pop + ser_as_pop,
+              total_ser_por_10mil_hab = round(total_ser_por_10mil_hab)) %>% 
+  relocate(ser_sa:ser_ed, .after = Consor_class ) %>% 
+  relocate(ser_sa_pop:total_ser_por_10mil_hab, .after = ser_ed)
+
+summary(capacities_2$total_ser_por_10mil_hab)
+```
+
+## IDHM 
+
+ - Quintis
+ - Mímimo 
+ - Máximo
+```{r}
+#Verificar quantiles 
+quantile(capacities_2$idhm, c(.2,.4,.6,.8,1))
+min(capacities_2$idhm)
+max(capacities_2$idhm) 
+
+#   20%   40%   60%   80%  100% 
+# 0.584 0.629 0.681 0.719 0.854 
+```
+
+### Categorizar IDHM
+```{r}
+capacities_2 <- capacities_2 %>% 
+  mutate(idhm_quintil = case_when(
+    idhm <= 0.584 ~ "primeiro",
+    idhm >= 0.585 & idhm <= 0.629 ~ "segundo",
+    idhm >= 0.630 & idhm <= 0.681 ~ "terceiro",
+    idhm >= 0.682 & idhm <= 0.719 ~ "quarto",
+    idhm >= 0.720 ~ "quinto"))
+    
+
+levels_idhm = c("primeiro", "segundo", "terceiro", "quarto", "quinto")
+
+capacities_2$idhm_quintil <- ordered(capacities_2$idhm_quintil, 
+               levels = c(levels_idhm))
+```
+
+### Verificar aplicação 
+
+Do artigo:
+
+> "Para operacionalizar essa variável, devido à necessidade de ajuste ao modelo logístico empregado (Yee, 2010), ao invés de trabalharmos com as gradações oficiais, trabalhamos com os quintis da distribuição observada , ordenados de forma crescente" (p. 10)
+
+> "Pela classificação do Atlas Brasil, dentre os 4.916 municípios analisados, apenas 30 se enquadram na classificação “muito baixo” e 5, na “muito alto”. Isso gera alta concentração nas categorias intermediárias (“baixo” = 1.316; “médio”= 2.054 e “alto” = 1.511). Ao adotar a classificação por quintis, aproximadamente 25% dos valores ficam classificadas em cada uma das categoriais, o que representa uma distribuição mais homogênea entre as categorias e permite a melhor aplicação do modelo logístico de regressão." (p. 10, nota 4)
+
+* Na verdade são ~20% dos valores
+
+```{r}
+capacities_2 %>% 
+  count(idhm_quintil, name = "qtdd_de_mun") %>% 
+  mutate(perc = qtdd_de_mun/sum(qtdd_de_mun)*100)
+```
+
+### Nova base 2
+
+Criada para preservar os dados brutos em caso de reutilização
+```{r nova_base_2}
+capacities_3 <- capacities_2
+```
+
+***
+
+# 04. Ver dados manipulados
+```{r visualizar_raw_data_2, fig.width = 20}
+capacities_3 %>%
+  datatable(extensions = 'Buttons',
+            rownames = F,
+            options = list(dom = 'Blfrtip',
+                           buttons = c('csv', 'excel'),
+                          autoFill = TRUE,
+                           fixedHeader = TRUE,
+                           autowidth = TRUE,
+                           paging = F,
+                           scrollX = TRUE,
+                           scrollY = "400px"))
+```
+
+### Verificar e remover NA's
+
+ - NA - Not Available (dados não disponíveis)
+```{r verificar_na_3}
+# Verificar existência de NAs
+DataExplorer::plot_missing(capacities_3)
+```
+
+```{r verificar_na_4}
+# NA - presentes apenas na quantidade de servidores
+# 1,46% dos casos está com NA. Excluindo esses, o número de municípios decai para 4.844 (86% do total)
+
+capacities_3 <- capacities_3 %>% 
+  drop_na(total_ser_por_10mil_hab)
+
+DataExplorer::plot_missing(capacities_3)
+```
+
+##### Not run
+```{r Not run_3}
+# Uso particular para configurações
+# setwd("C:/r_files/my_academic_projects/capacidades/capacitties")
+#save.image("capacities_raw_data_3.RData")
+#load("capacities_raw_data_3.RData")
+```
+
+*** 
+# 05. Regressões
+```{r}
+capacities_4 <- capacities_3
+```
+
+- Rodadas com a função `vglm`, do pacote [‘VGAM’](https://cran.r-project.org/web/packages/VGAM/VGAM.pdf), e os argumentos  `family = cumulative(parallel = T, reverse = T)`
+
+> No artigo foram reportadas apenas a coluna *Estimate* e o *p-value*
+
+## Brasil
+ 
+ - 4.844 casos
+```{r fig.width= 20}
+olr_brasil <- vglm(idhm_quintil ~ log(pib_per_cap) + 
+                  Num_sc + Num_pl + Num_fu + Num_chl + total_ser_por_10mil_hab + Num_consor,  
+                  data = capacities_4, family = cumulative(parallel = T, reverse = T))
+
+summary(olr_brasil)
+```
+
+## Norte 
+
+ - 368 casos 
+```{r fig.width= 20}
+norte <- capacities_4 %>% 
+  filter(regiao == "1 - Norte")
+
+olr_norte <- vglm(idhm_quintil ~ log(pib_per_cap) + 
+                  Num_sc + Num_pl + Num_fu + Num_chl + total_ser_por_10mil_hab + Num_consor,  
+                  data = norte, family = cumulative(parallel = T, reverse = T))
+
+summary(olr_norte)
+```
+
+## Nordeste
+
+ - 1.574 casos
+```{r fig.width= 20}
+nordeste <- capacities_4 %>% 
+  filter(regiao == "2 - Nordeste")
+
+olr_nordeste <- vglm(idhm_quintil ~ log(pib_per_cap) + 
+                  Num_sc + Num_pl + Num_fu + Num_chl + total_ser_por_10mil_hab + Num_consor,  
+                  data = nordeste, family = cumulative(parallel = T, reverse = T))
+
+summary(olr_nordeste)
+```
+
+##  Centro-Oeste
+
+ - 418 casos
+```{r fig.width= 20}
+centro_oeste <- capacities_4 %>% 
+  filter(regiao == "5 - Centro-Oeste")
+
+olr_centro_oeste <- vglm(idhm_quintil ~ log(pib_per_cap) + 
+                  Num_sc + Num_pl + Num_fu + Num_chl + total_ser_por_10mil_hab + Num_consor,  
+                  data = nordeste, family = cumulative(parallel = T, reverse = T))
+
+summary(olr_centro_oeste)
+```
+
+## Sudeste
+
+ - 1.407 casos
+```{r fig.width= 20}
+sudeste <- capacities_4 %>% 
+  filter(regiao == "3 - Sudeste")
+
+olr_sudeste <- vglm(idhm_quintil ~ log(pib_per_cap) + 
+                  Num_sc + Num_pl + Num_fu + Num_chl + total_ser_por_10mil_hab + Num_consor,  
+                  data = sudeste, family = cumulative(parallel = T, reverse = T))
+
+summary(olr_sudeste)
+```
+
+## Sul
+
+ - 1.077 casos
+```{r fig.width= 20}
+sul <- capacities_4 %>% 
+  filter(regiao == "4 - Sul")
+
+olr_sul <- vglm(idhm_quintil ~ log(pib_per_cap) + 
+                  Num_sc + Num_pl + Num_fu + Num_chl + total_ser_por_10mil_hab + Num_consor,  
+                  data = sul, family = cumulative(parallel = T, reverse = T))
+
+summary(olr_sul)
+```
+
+*** 
+
+# 06. Mapas
+
+## Carregar shapes e tema
+```{r eval=F}
+shape_mun <- geobr::read_municipality(simplified = T, showProgress = F)
+shape_estado <- geobr::read_state(simplified = T, showProgress = F)
+```
+
+##### Not run
+```{r Not run_4}
+# Uso particular para configurações
+#setwd("C:/r_files/my_academic_projects/capacidades/capacitties")
+#save.image("capacities_raw_data_4.RData")
+#load("capacities_raw_data_4.RData")
+# rm(list = setdiff(ls(), "map"))
+#save.image("capacities_raw_data_shapes.RData")
+load("capacities_raw_data_shapes.RData")
+```
+
+```{r}
+map <- shape_mun %>% 
+  select(cod_mun = code_muni, geom) %>% 
+  mutate(cod_mun = as.character(cod_mun)) %>% 
+  left_join(capacities_4)
+```
+
+### Config. para mapa
+```{r}
+#save(map, "map.RData")
+theme_map_manual <- function(){
+        theme(legend.position = c(0.35, 0.5), 
+        legend.justification = c("right", "top"),
+        legend.background = element_blank(),
+        plot.title=element_text( hjust=0, vjust=-5, face='bold', size = 12))
+}        
+
+levels_map <- levels(map$Sc_class)
+# inverter ordem e incluir NA
+levels_map <- c(levels_map[c(4:1)], NA)
+
+# Definir cores
+colors_map <- c(scales::viridis_pal(option = "D")(4), "gray40")
+
+# Definir cor para cada level
+names(colors_map) <- levels_map
+
+# Definir rótulos 
+labels_map <- levels_map
+labels_map[5] <- "Não analisados\nAcima de 50.000hab."
+```
+
+### Secretarias
+```{r}
+map_sc <- map %>% 
+  ggplot()+
+  geom_sf(aes(fill = fct_infreq(Sc_class)), 
+          color = NA)+
+  scale_fill_manual(name = "Secretarias", 
+                    values = colors_map,
+                    na.value = "gray40",
+                    limits = levels_map,
+                    breaks = levels_map,
+                    labels = labels_map)+
+  geom_sf(data=shape_estado, fill=NA, color = "black")+
+  ggthemes::theme_map()+
+  theme_map_manual()+
+  ggtitle("Secretarias exclusivas")
+```
+
+### Planos
+```{r}
+map_pl <- map %>% 
+  ggplot()+
+  geom_sf(aes(fill = fct_infreq(Pl_class)), color = NA)+
+  scale_fill_manual(name = "Planos", 
+                    values = colors_map,
+                    na.value = "gray40",
+                    limits = levels_map,
+                    breaks = levels_map,
+                    labels = labels_map)+
+  geom_sf(data=shape_estado, fill=NA, color = "black")+
+  ggthemes::theme_map()+
+  theme_map_manual()+
+  ggtitle("Planos")
+```
+
+### Fundos
+```{r}
+map_fu <- map %>% 
+  ggplot()+
+  geom_sf(aes(fill = fct_infreq(Fu_class)), color = NA)+
+  scale_fill_manual(name = "Fundos", 
+                    values = colors_map,
+                    na.value = "gray40",
+                    limits = levels_map,
+                    breaks = levels_map,
+                    labels = labels_map)+
+  geom_sf(data=shape_estado, fill=NA, color = "black")+
+  ggthemes::theme_map()+
+  theme_map_manual()+
+  ggtitle("Fundos")
+```
+
+### Conselhos
+```{r}
+map_chl <- map %>% 
+  ggplot()+
+  geom_sf(aes(fill = fct_infreq(Chl_class)), 
+          color = NA)+
+  scale_fill_manual(name = "Conselhos", 
+                    values = colors_map,
+                    na.value = "gray40",
+                    limits = levels_map,
+                    breaks = levels_map,
+                    labels = labels_map)+
+  geom_sf(data=shape_estado, fill=NA, color = "black")+
+  ggthemes::theme_map()+
+  theme_map_manual()+
+  ggtitle("Conselhos")
+```
+
+## Visualizar mapas
+
+```{r fig.width=10, fig.height= 10}
+mapas <- gridExtra::grid.arrange(map_sc, map_pl, map_fu, map_chl, ncol = 2)
+
+mapas
+```
+
+*** 
+
+# 07. Tabelas auxiliares
+ 
+> Não reportadas no artigo
+
+#### Matriz de correlação
+
+```{r fig.width= 8, fig.height=8}
+cap_cor <- capacities_4 %>% 
+  select(pib_per_cap, idhm, starts_with("Num"), total_ser_por_10mil_hab, populacao)
+
+corr <- round(cor(cap_cor), 2)
+
+ggcorrplot(corr, hc.order = F, 
+           type = "lower", 
+           show.diag = T,
+           pch = 12,
+           pch.cex = 12,
+           tl.cex = 12,
+           lab = TRUE, 
+           lab_size = 3, 
+           method="circle", 
+           colors = c("tomato2", "white", "springgreen3"), 
+           title="Correlação entre variáveis numéricas", 
+           ggtheme=theme_bw)
+```
+
+#### IDHM por região
+```{r}
+sjPlot::sjt.xtab(capacities_4$idhm_quintil, 
+                 capacities_4$regiao, 
+                 encoding = "windows", 
+                 show.summary = F,
+                 show.row.prc = T,
+                 show.col.prc = T,
+                 title = "IDHM por região")
+```
+
+
+#### IDHM por tamanho população
+```{r}
+sjPlot::sjt.xtab(capacities_4$idhm_quintil, 
+                 capacities_4$faixa_pop, 
+                 encoding = "windows", 
+                 show.summary = F,
+                 show.row.prc = T,
+                 show.col.prc = T,
+                 title = "IDHM por tamanho população")
+```
+
+
+#### Secretarias Brasil
+```{r}
+sjPlot::sjt.xtab(capacities_4$idhm_quintil, 
+                 capacities_4$Sc_class, 
+                 encoding = "windows", 
+                 show.summary = F,
+                 show.row.prc = T,
+                 show.col.prc = T)
+```
+
+
+#### Secretarias Norte
+```{r}
+  sjt.xtab(norte$idhm_quintil, 
+                 norte$Sc_class, 
+                 encoding = "windows", 
+                 show.summary = F,
+                 show.row.prc = T,
+                 show.col.prc = T,
+           title = "Norte")
+
+
+```
+
+
+#### Secretarias Nordeste
+```{r}
+  sjt.xtab(nordeste$idhm_quintil, 
+                 nordeste$Sc_class, 
+                 encoding = "windows", 
+                 show.summary = F,
+                 show.row.prc = T,
+                 show.col.prc = T,
+           title = "Nordeste")
+```
+
+
+#### Secretarias Centro-Oeste
+```{r}
+  sjt.xtab(centro_oeste$idhm_quintil, 
+                 centro_oeste$Sc_class,
+                 encoding = "windows", 
+                 show.summary = F,
+                 show.row.prc = T,
+                 show.col.prc = T,
+           title = "Centro-Oeste")
+```
+
+
+#### Secretarias Sudeste
+```{r}
+  sjt.xtab(sudeste$idhm_quintil, 
+                 sudeste$Sc_class, 
+                 encoding = "windows", 
+                 show.summary = F,
+                 show.row.prc = T,
+                 show.col.prc = T,
+           title = "Sudeste")
+```
+
+
+#### Secretarias Sul
+```{r}
+  sjt.xtab(sul$idhm_quintil, 
+                 sul$Sc_class, 
+                 encoding = "windows", 
+                 show.summary = F,
+                 show.row.prc = T,
+                 show.col.prc = T,
+                  title = "Sul")
+```
+
+
+#### Demais tabelas...
+<!-- # Planos Brasil -->
+<!-- ```{r} -->
+<!-- sjPlot::sjt.xtab(ds_pop$IDHM_Class,  -->
+<!--                  ds_pop$Pl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--                  title = "Brasil") -->
+
+<!-- ``` -->
+
+<!-- # Planos Norte -->
+<!-- ```{r} -->
+<!-- ds_sc_no <- ds_pop %>%  -->
+<!--   filter(A3 == "1 - Norte") -->
+
+<!--   sjt.xtab(ds_sc_no$IDHM_Class,  -->
+<!--                  ds_sc_no$Pl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Norte") -->
+
+
+<!-- ``` -->
+
+<!-- # Planos Nordeste -->
+<!-- ```{r} -->
+<!-- ds_sc_ne <- ds_pop %>%  -->
+<!--   filter(A3 == "2 - Nordeste") -->
+
+<!--   sjt.xtab(ds_sc_ne$IDHM_Class,  -->
+<!--                  ds_sc_ne$Pl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Nordeste") -->
+
+
+<!-- ``` -->
+
+<!-- # Planos Centro-Oeste -->
+<!-- ```{r} -->
+<!-- ds_sc_co <- ds_pop %>%  -->
+<!--   filter(A3 == "5 - Centro-Oeste") -->
+
+<!--   sjt.xtab(ds_sc_co$IDHM_Class,  -->
+<!--                  ds_sc_co$Sc_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Centro-Oeste") -->
+<!-- ``` -->
+
+<!-- # Planos Sudeste -->
+<!-- ```{r} -->
+<!-- ds_sc_se <- ds_pop %>%  -->
+<!--   filter(A3 == "3 - Sudeste") -->
+
+<!--   sjt.xtab(ds_sc_se$IDHM_Class,  -->
+<!--                  ds_sc_se$Pl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Sudeste") -->
+<!-- ``` -->
+
+<!-- # Planos Sul -->
+<!-- ```{r} -->
+<!-- ds_sc_so <- ds_pop %>%  -->
+<!--   filter(A3 == "4 - Sul") -->
+
+<!--   sjt.xtab(ds_sc_so$IDHM_Class,  -->
+<!--                  ds_sc_so$Pl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--                   title = "Sul") -->
+<!-- ``` -->
+
+
+<!-- # Fundos Brasil -->
+<!-- ```{r} -->
+<!-- sjPlot::sjt.xtab(ds_pop$IDHM_Class,  -->
+<!--                  ds_pop$Fu_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--                  title = "Brasil") -->
+
+<!-- ``` -->
+
+<!-- # Fundos Norte -->
+<!-- ```{r} -->
+<!-- ds_sc_no <- ds_pop %>%  -->
+<!--   filter(A3 == "1 - Norte") -->
+
+<!--   sjt.xtab(ds_sc_no$IDHM_Class,  -->
+<!--                  ds_sc_no$Fu_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Norte") -->
+
+
+<!-- ``` -->
+
+<!-- # Fundos Nordeste -->
+<!-- ```{r} -->
+<!-- ds_sc_ne <- ds_pop %>%  -->
+<!--   filter(A3 == "2 - Nordeste") -->
+
+<!--   sjt.xtab(ds_sc_ne$IDHM_Class,  -->
+<!--                  ds_sc_ne$Fu_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Nordeste") -->
+
+
+<!-- ``` -->
+
+<!-- # Fundos Centro-Oeste -->
+<!-- ```{r} -->
+<!-- ds_sc_co <- ds_pop %>%  -->
+<!--   filter(A3 == "5 - Centro-Oeste") -->
+
+<!--   sjt.xtab(ds_sc_co$IDHM_Class,  -->
+<!--                  ds_sc_co$Fu_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Centro-Oeste") -->
+<!-- ``` -->
+
+<!-- # Fundos Sudeste -->
+<!-- ```{r} -->
+<!-- ds_sc_se <- ds_pop %>%  -->
+<!--   filter(A3 == "3 - Sudeste") -->
+
+<!--   sjt.xtab(ds_sc_se$IDHM_Class,  -->
+<!--                  ds_sc_se$Fu_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Sudeste") -->
+<!-- ``` -->
+
+<!-- # Fundos Sul -->
+<!-- ```{r} -->
+<!-- ds_sc_so <- ds_pop %>%  -->
+<!--   filter(A3 == "4 - Sul") -->
+
+<!--   sjt.xtab(ds_sc_so$IDHM_Class,  -->
+<!--                  ds_sc_so$Fu_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--                   title = "Sul") -->
+<!-- ``` -->
+
+
+<!-- # Conselhos Brasil -->
+<!-- ```{r} -->
+<!-- sjPlot::sjt.xtab(ds_pop$IDHM_Class,  -->
+<!--                  ds_pop$Chl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--                  title = "Brasil") -->
+
+<!-- ``` -->
+
+<!-- # Conselhos Norte -->
+<!-- ```{r} -->
+<!-- ds_sc_no <- ds_pop %>%  -->
+<!--   filter(A3 == "1 - Norte") -->
+
+<!--   sjt.xtab(ds_sc_no$IDHM_Class,  -->
+<!--                  ds_sc_no$Chl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Norte") -->
+
+
+<!-- ``` -->
+
+<!-- # Conselhos Nordeste -->
+<!-- ```{r} -->
+<!-- ds_sc_ne <- ds_pop %>%  -->
+<!--   filter(A3 == "2 - Nordeste") -->
+
+<!--   sjt.xtab(ds_sc_ne$IDHM_Class,  -->
+<!--                  ds_sc_ne$Chl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Nordeste") -->
+
+
+<!-- ``` -->
+
+<!-- # Conselhos Centro-Oeste -->
+<!-- ```{r} -->
+<!-- ds_sc_co <- ds_pop %>%  -->
+<!--   filter(A3 == "5 - Centro-Oeste") -->
+
+<!--   sjt.xtab(ds_sc_co$IDHM_Class,  -->
+<!--                  ds_sc_co$Chl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Centro-Oeste") -->
+<!-- ``` -->
+
+<!-- # Conselhos Sudeste -->
+<!-- ```{r} -->
+<!-- ds_sc_se <- ds_pop %>%  -->
+<!--   filter(A3 == "3 - Sudeste") -->
+
+<!--   sjt.xtab(ds_sc_se$IDHM_Class,  -->
+<!--                  ds_sc_se$Chl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--            title = "Sudeste") -->
+<!-- ``` -->
+
+<!-- # Conselhos Sul -->
+<!-- ```{r} -->
+<!-- ds_sc_so <- ds_pop %>%  -->
+<!--   filter(A3 == "4 - Sul") -->
+
+<!--   sjt.xtab(ds_sc_so$IDHM_Class,  -->
+<!--                  ds_sc_so$Chl_class,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T, -->
+<!--                   title = "Sul") -->
+<!-- ``` -->
+
+<!-- # Consórcio Educação -->
+<!-- ```{r} -->
+<!-- sjPlot::sjt.xtab(ds_pop$IDHM_Class,  -->
+<!--                  ds_pop$consor_ed,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T) -->
+<!-- ``` -->
+
+<!-- # Consórico Saúde -->
+<!-- ```{r} -->
+<!-- sjPlot::sjt.xtab(ds_pop$IDHM_Class,  -->
+<!--                  ds_pop$consor_sa,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T) -->
+<!-- ``` -->
+
+<!-- # Consórcio Assitência Social -->
+<!-- ```{r} -->
+<!-- sjPlot::sjt.xtab(ds_pop$IDHM_Class,  -->
+<!--                  ds_pop$consor_as,  -->
+<!--                  encoding = "UTF-8",  -->
+<!--                  show.summary = F, -->
+<!--                  show.row.prc = T, -->
+<!--                  show.col.prc = T) -->
+<!-- ``` -->
+
