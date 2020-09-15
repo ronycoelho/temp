@@ -1,0 +1,133 @@
+---
+title: "Tidytuesday_generic"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries and settings
+```{r}
+rm(list = ls())
+library(tidytuesdayR)
+library(tidyverse)
+library(pdftools)
+#library(mdthemes)
+# library(paletteer)
+#source("themes.R")
+options(scipen = 999)
+theme_set(theme_light(base_size = 25))
+#dir.create("week_37")
+#path <- "C:/r_files/github/mytidytuesday/tidytuesday/week_37"
+#setwd(path)
+```
+
+# Import data
+```{r}
+df.1 <- tidytuesdayR::tt_load(2020, week = 38)
+
+df.1 <- df.1$kids
+
+df.1 %>%
+  count(variable) %>% View()
+```
+
+# Manipulating
+```{r}
+df.2 <- df.1 %>% 
+  filter(variable == "PK12ed") %>% 
+  select(state, year, inf_adj) %>% 
+  mutate(mean = mean(inf_adj)) %>% 
+  mutate(value_state = mean - inf_adj)
+```
+
+# Themes
+```{r}
+# crops <- unique(df.2$crop)
+# color <- c("#F5DEB3", "#f0ebd8", "#EEB734", 
+#            "#665847", "#ffc284","#2B0F0E", 
+#            "#739122", "#272D2D", "#dda15e", 
+#            "#4D342A", "#fffb95")
+# # scales::show_col(color)
+# 
+# back_color <- "#fff1e6"
+# font_color <- "#1d0b04"
+# 
+# names(color)<- crops
+
+RColorBrewer::brewer.pal.info
+
+theme_set(
+ theme_minimal()+
+  theme(
+    plot.background=element_rect(fill = "#f0efeb"),
+    plot.title = element_text(vjust = -10, hjust = 0.1,
+                              size = 25),
+    plot.subtitle = element_text(vjust = -25, hjust = 0.1), 
+    axis.text.y = element_blank(),
+    panel.grid = element_line(linetype="dotted", color="lightgray")))
+```
+
+# Plot
+```{r}
+plot <- df.2 %>% 
+  filter(year == 2016) %>% 
+  mutate(label_pos = ifelse(value_state > 0, state, NA),
+         label_neg = ifelse(value_state < 0, state, NA),
+         seg_color = ifelse(value_state > 0, "red", "blue"))%>%
+  mutate(state = fct_reorder(state, value_state)) %>% 
+  ggplot(aes(x=value_state, y = state)) +
+  scale_x_continuous(
+                     labels = scales::dollar_format())+
+  geom_vline(aes(xintercept=0), color = "yellow")+
+  geom_segment(aes(x=0, xend=value_state, 
+                   y = state, yend=state,
+                   color = seg_color),
+               size = 2,
+               show.legend = F)+
+  geom_text(aes(x= 0, y = state, label = label_pos, color = seg_color), show.legend=F,  
+            hjust = 1, vjust = 0.3, nudge_x = -1000000)+
+  geom_text(aes(x= 0, y = state, label = label_neg, color = seg_color), show.legend=F, 
+            hjust = 0, vjust = 0.3, nudge_x = 1000000)+
+  annotate(
+    geom = "curve", x = -20000000, y = "South Carolina", 
+    xend = 0, yend = "Wisconsin", 
+    curvature = .3, arrow = arrow(length = unit(5, "mm")), color = "yellow")+
+  annotate(geom = "text", x = -20000000, y = "Arizona", 
+           label = "average = $9,617,056", hjust = "center")+
+  annotate(geom = "text", x = -57500000, y = "Idaho", 
+           label = "Values above and below average", 
+           hjust = "left")+
+  labs(title = "US Spending on Kids in 2016",
+      subtitle = "Public spending on elementary and secondary education by state",
+      caption = "#TidyTuesday Project - Week 38",
+      y = "")
+```
+
+# run plot
+```{r}
+X11(width = 15, height = 10); plot
+```
+
+# Save plot
+```{r}
+# width = 17, height = 8.5
+# width = 10, height = 5.7, device = cairo_pdf
+# width = 19, height = 11, device = cairo_pdf
+# width = 9, height = 14, device = cairo_pdf
+# width = 15, height = 12
+#Saving 5.27 x 3.93 in image == 13 x 9 centimetros
+# Save to pdf
+ggsave(filename = "plot_cairo_test.pdf",
+       plot = plot, 
+       width = 10, height = 5, 
+       device = cairo_pdf) 
+# Convert to png
+pdftools::pdf_convert("plot_cairo_test.pdf", 
+                      filenames = "plot_test_from_pdf.png",
+                      format = "png", 
+                      dpi = 250) #dpi 250-350
+```
