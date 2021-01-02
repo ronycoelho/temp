@@ -1,0 +1,131 @@
+---
+title: "coronabr"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+[coronabr](https://liibre.github.io/coronabr/index.html)
+
+[vignnet](https://liibre.github.io/coronabr/articles/articles/mapas_br.html)
+```{r}
+options(scipen = 999)
+remotes::install_github("liibre/coronabr")
+library(coronabr)
+library(tidyverse)
+library(gganimate)
+```
+
+```{r}
+dt <- get_corona_br()
+
+coronabr::plot_corona_br(dt, log = F, tipo = "numero")
+
+coronabr::plot_corona_br(dt, tipo = "aumento")
+
+coronabr::plot_uf(dt, tipo = "casos", n = 3)
+
+coronabr::plot_uf(dt, tipo = "obitos", n = 3)
+```
+
+```{r}
+glimpse(dt)
+
+dt <- dt %>% 
+  select(date, city, city_ibge_code,
+         state, place_type, order_for_place,
+         epidemiological_week:last_available_deaths,
+         new_confirmed, new_deaths)
+
+last <- dt %>% 
+  filter(place_type == "city") %>% 
+  filter(is_last == T)
+
+sum(last$last_available_deaths)  
+  
+dt.2 <- dt %>% 
+  filter(place_type == "city") %>% 
+  drop_na() %>% 
+  filter(new_deaths >= 0 ) %>% 
+  select(city_ibge_code, date, new_deaths) %>% 
+  mutate(acumulado = cumsum(new_deaths)) %>% 
+  arrange(date)
+```
+
+```{r}
+ggplot(dt.2, aes(x = date, y = acumulado) )+
+  geom_line(group = 1) +
+  transition_time(date)+
+  ease_aes("linear")+
+  labs(title = "Data: {frame_time}")
+```
+
+
+
+
+
+```{r}
+dt %>% 
+  filter(city_ibge_code == 35,
+         date == data_max) %>% 
+  group_by(city_ibge_code) %>%
+  summarise(sum(last_available_deaths))
+```
+
+```{r}
+dt %>% filter(city_ibge_code == 35) %>% 
+      group_by(city_ibge_code) %>% 
+      summarise(cumsum(new_deaths)) %>% tail()
+
+dt_sp <- dt %>% filter(city_ibge_code == 35)
+
+
+datas <- plyr::count(dt$date[dt$last_available_confirmed > 0                      & !is.na(dt$state)])
+
+datas$lag <- datas$freq - dplyr::lag(datas$freq)
+
+if (datas$lag[which.max(datas$x)] < 0) {
+  data_max <- max(datas$x, na.rm = TRUE) - 1
+} else {
+  data_max <- max(datas$x, na.rm = TRUE)
+}
+```
+
+
+
+```{r}
+for(i in 1:nrow(dt_sp)){
+  print(i)
+  print(dt_sp$date[i])
+  dt_sp$sum <- cumsum(dt_sp$new_confirmed)
+  print(dt_sp$sum[i])
+}
+```
+
+```{r}
+dt %>% 
+  filter(state =="SP") %>% 
+         #place_type == "city") %>% 
+  group_by(place_type)%>%
+  mutate(confirmados = cumsum(new_confirmed)) %>% 
+  ungroup() %>% 
+  mutate(id = row_number()) %>% 
+  select(id, date, place_type, confirmados) %>% 
+  pivot_wider(names_from = place_type, values_from = confirmados) %>% 
+  group_by(date) %>% 
+  #summarise(city = sum(city, na.rm = T),
+  #          state = sum(state, na.rm = T)) %>% 
+  #ungroup() %>% 
+  mutate(dif = city - state) %>% 
+  View()
+```
+
+
+```{r}
+
+
+
+```
+
