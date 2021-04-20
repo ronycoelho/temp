@@ -1,0 +1,102 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(colorspace)
+library(extrafont)
+loadfonts()
+fonts() font 60 - cooperlate
+```
+
+
+# 
+```{r}
+netflix_titles <- read_csv("~/netflix_titles.csv")
+
+diretores <- netflix_titles %>% 
+  drop_na(director) %>% 
+  count(director,sort = T) %>% 
+  filter(n > 1)
+```
+
+
+```{r}
+dt <- diretores %>% 
+  full_join(netflix_titles) %>% 
+  select(director, cast)
+
+nmax <- max(stringr::str_count(dt$cast, ","), na.rm = T) + 1
+
+net <- dt %>%  
+  separate(cast, sep = ",", into = paste0("col_", seq_len(nmax))) %>% 
+  pivot_longer(-director)
+
+net <- net %>% 
+  select(director, value) %>% 
+  drop_na()
+
+net <- net %>% 
+  mutate(value = str_trim(value, side = "both"))
+
+martin <- net %>%
+  filter(director == "Martin Scorsese")
+
+net.2 <- net %>% 
+  filter(value %in% martin$value)
+
+net.2 %>% 
+  count(director)
+```
+
+
+```{r}
+net.2  <- net.2 %>% 
+  rename(from = director, to = value)
+```
+
+```{r}
+net.directors <- as_tbl_graph(net.2, directed = F)
+
+
+redes.net <- net.directors %>% 
+  activate(nodes) %>% 
+  mutate(size = ifelse(name %in% net.2$from, 2, 1),
+         color = ifelse(name %in% net.2$from, "Directors", "Cast"))
+
+size.vector <- net.directors %>% 
+  activate(nodes) %>% 
+  mutate(size = ifelse(name %in% net.2$from, 2, 1.8)) %>% 
+  pull(size)
+
+
+size.vector[1] <- 5
+```
+
+# 
+```{r}
+ggraph(redes.net, layout = 'nicely')+
+  geom_edge_link2(color = "#E50914")+
+  geom_node_point(aes(color = color), size = .5)+
+  geom_node_point(size = 1, color = "#E50914")+
+  geom_node_text(aes(label = name, color = color),
+                 size = size.vector,
+                 check_overlap = T,
+                 fontface = "bold",
+                 show.legend = F)+
+  scale_color_manual(values = c("#B6CEFA", "white"))+
+  theme(plot.background = element_rect(color = "black", fill = "black"),
+        panel.background = element_rect(color = "black", fill = "black"),
+        legend.text = element_text(color = "white"),
+        plot.title = element_text(hjust = .5, color = "#E50914", size = 20 ),
+        plot.subtitle = element_text(hjust = .5, color = "#E50914", size = 15),
+        plot.caption = element_text(hjust = .5, color = "white"),
+        plot.margin = margin(1,1,1,1, "cm"))+
+  guides(color = guide_legend(override.aes = list(size=5)))+
+  labs(title = "Netflix's directors and cast network",
+       subtitle = "Connections from Martin Scorsese",
+       caption = "caption")
+```
+
