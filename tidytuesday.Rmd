@@ -1,0 +1,109 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(mdthemes)
+library(scales)
+library(patchwork)
+options(scipen = 9999)
+```
+
+
+
+```{r}
+tuesday <- tidytuesdayR::last_tuesday()
+
+tt <- tidytuesdayR::tt_load(tuesday)
+
+survey <- tt$survey
+```
+
+
+```{r}
+#grid_col <- axis_col <- "#333333"
+color.2 <- "#1e1e1e"
+
+theme.2 <- theme(panel.background = element_rect(color = "gray20", fill = "gray20"),
+                 plot.background = element_rect(color = "gray20", fill = "gray20"),
+                 panel.grid.major = element_line(color = color.2, size = 0.2), 
+                 panel.grid.minor = element_line(color = color.2, size = 0.15))
+```
+
+
+```{r}
+survey <- survey %>% 
+  mutate(timestamp = mdy_hms(timestamp)) %>% 
+  mutate(age_category = fct_relevel(
+    fct_reorder(how_old_are_you, parse_number(how_old_are_you)), "under 18"))
+
+survey %>% 
+  count(age_category)
+```
+
+
+```{r}
+survey <- survey %>%
+  filter(currency == "USD")
+
+max <- max(survey$annual_salary)
+
+survey %>% 
+  filter(annual_salary < 200000) %>% 
+  ggplot(aes(age_category, annual_salary)) +
+  geom_boxplot()
+```
+
+```{r}
+plot.1 <- survey %>%
+  drop_na(race) %>% 
+  mutate(race = fct_lump(race, 4)) %>% 
+  filter(annual_salary < 300000) %>% 
+  mutate(race = fct_reorder(race, annual_salary,.fun = median)) %>%
+  group_by(race) %>% 
+  mutate(median_salary = median(annual_salary)) %>%
+  ungroup() %>% 
+  mutate(general_median = mean(annual_salary) ) %>% 
+  ggplot(aes(race, annual_salary, fill = median_salary)) +
+  geom_hline(aes(yintercept = general_median), linetype = "dashed", color="white")+
+  geom_boxplot(notch = T, varwidth = T, color="white")+
+  stat_summary(fun.y=mean, geom="point", shape=20, size=5, color="white", fill="gray10")+
+  scale_y_continuous(labels = scales::dollar_format())+
+  viridis::scale_fill_viridis() +
+  labs(y = "Annual Salary\n", x = "Race", fill = "Median Salary")+
+  mdthemes::md_theme_modern_rc()+
+  guides(fill = guide_legend(title.position = "top"))
+```
+ 
+```{r}
+survey %>% glimpse()
+```
+
+```{r}
+plot.2 <- survey %>% 
+  drop_na(age_category) %>% 
+  filter(annual_salary < 300000) %>% 
+  group_by(age_category) %>% 
+  mutate(median_salary = median(annual_salary)) %>%
+  ungroup() %>% 
+  mutate(general_median = mean(annual_salary) ) %>% 
+  ggplot(aes(age_category, annual_salary, fill = median_salary)) +
+  geom_hline(aes(yintercept = general_median), linetype = "dashed", color="white")+
+  geom_boxplot(notch = T, varwidth = T, color="white")+
+  stat_summary(fun.y=mean, geom="point", shape=20, size=5, color="white", fill="gray10")+
+  scale_y_continuous(labels = scales::dollar_format())+
+  viridis::scale_fill_viridis() +
+  labs(y = "Annual Salary\n", x = "Race", fill = "Median Salary")+
+  mdthemes::md_theme_ft_rc()+
+  guides(fill = guide_legend(title.position = "top"))
+  
+```
+
+```{r}
+plot.1 + plot.2
+```
+
