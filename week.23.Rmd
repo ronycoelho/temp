@@ -1,0 +1,96 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+
+#summary <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-06-01/viewers.csv')
+
+viewrs <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-06-01/viewers.csv')
+    
+```
+
+```{r}
+theme_set(mdthemes::md_theme_economist_white())
+theme_set(mdthemes::md_theme_nothing()+
+          theme(plot.background = element_rect(color = "#86BBD8", fill = "#86BBD8"),
+                axis.line.x = element_line(color = "black", size = 1),
+                axis.text.y = element_blank(),
+                plot.margin = margin(.5,1,.5,1, "cm")))
+```
+
+
+```{r}
+df <- viewrs %>%
+  drop_na() %>% 
+  mutate(year = lubridate::year(episode_date),
+         DayMonth = format(as.Date(episode_date), "%d-%b")) %>%
+  arrange(episode_date) %>% 
+  group_by(season) %>% 
+  mutate(total.season = sum(viewers),
+         mean.season = mean(viewers),
+         first.day =  first(DayMonth),
+         last.day = last(DayMonth))%>% 
+  ungroup() %>% 
+  mutate(general.mean = mean(viewers)) %>% 
+  select(season, episode_date, viewers, mean.season, general.mean, first.day, last.day, DayMonth) %>%
+  add_count(season, episode_date, wt = viewers) 
+        
+```
+
+
+```{r}
+df %>% 
+  filter(season == 3)
+```
+
+
+```{r}
+df %>% 
+  filter(season == 1) %>% 
+  ggplot(aes(episode_date, n))+
+  scale_x_date(breaks = c(min(df$episode_date), max(df$episode_date)),
+               labels = c(first(df$DayMonth), last(df$DayMonth)), expand = c(0, 0))+
+  geom_area(fill = "#7209B7", color = "white")+
+  scale_y_continuous(limits = c(0, max(summary$viewers, na.rm = T)*2))+
+  geom_hline(aes(yintercept = mean.season), linetype = "dashed")+
+  geom_hline(aes(yintercept = general.mean), linetype = "longdash")+
+  geom_text(aes(x = first(episode_date), y = 10, label = paste0("Season ", season, " - ", year)), color = "white", hjust = -0.1, size = 20, fontface = "bold")+
+  geom_text(aes(x = max(episode_date), y = unique(mean.season), label = paste0(round(mean.season, 1), " millions")), color = "white", hjust = 1.1, vjust =-.2, size = 5)+
+  geom_text(aes(x = max(episode_date), y = unique(general.mean), label = paste0(round(general.mean, 1), " millions")), color = "white", hjust = 1.1, vjust =-.2, size = 5)+
+  labs(x="", y = "")
+```
+
+
+```{r}
+dev.off()
+windows(width = 12, height = 6)
+df %>%
+  filter(season == 1) %>% 
+  ggplot(aes(episode_date, n))+
+  geom_area(fill = "#7209B7", color = "white")+
+  scale_x_date(breaks = c(min(df$episode_date), max(df$episode_date)),
+               labels = c(unique(df$first.day), unique(df$last.day)), expand = c(0, 0))+
+  
+  coord_cartesian(clip = "off")+
+  scale_y_continuous(limits = c(0, max(summary$viewers, na.rm = T)*2))+
+  geom_hline(aes(yintercept = mean.season), linetype = "dashed")+
+  geom_hline(aes(yintercept = general.mean), linetype = "longdash")+
+  geom_text(aes(x = first(episode_date), y = 10, label = paste0("Season ", season, " - ", year)), color = "white", hjust = -0.1, size = 10, fontface = "bold")+
+  geom_text(aes(x = max(episode_date), y = unique(mean.season), label = paste0(round(mean.season, 1), " millions")), color = "white", hjust = 1.1, vjust =-.2, size = 2)+
+  geom_text(aes(x = max(episode_date), y = unique(general.mean), label = paste0(round(general.mean, 1), " millions")), color = "white", hjust = 1.1, vjust =-.2, size = 2)+
+  labs(x= "", y = "")+
+  facet_wrap(vars(season), ncol = 5)
+```
+
+
+```{r}
+dev.off()
+X11()
+waterfall::waterfallplot(height = df$n, names.arg = df$season)
+
+```
+
